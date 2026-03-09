@@ -62,7 +62,7 @@ export default function RightPanel({
             {trending.map((study, i) => (
               <Link
                 key={study.id}
-                href={`/experiment/${study.id}`}
+                href={`/study/${study.id}`}
                 className="flex items-start gap-3 px-2 py-2 rounded-md hover:bg-gray-50 transition-colors"
               >
                 <span className="text-lg font-bold text-gray-300 w-5 text-right shrink-0">
@@ -106,7 +106,7 @@ export default function RightPanel({
               {topFunded.map((study) => (
                 <Link
                   key={study.id}
-                  href={`/experiment/${study.id}`}
+                  href={`/study/${study.id}`}
                   className="flex items-center justify-between px-2 py-2 rounded-md hover:bg-gray-50 transition-colors"
                 >
                   <p className="text-sm text-gray-800 truncate mr-2">

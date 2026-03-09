@@ -115,6 +115,12 @@ alter table samples add column if not exists file_urls text[] default '{}';
 alter table modules add column if not exists budget_pct numeric;
 alter table modules add column if not exists budget_rationale text;
 
+-- Analysis module flag (AI auto-claims these by default)
+alter table modules add column if not exists is_analysis boolean default false;
+
+-- Review columns: FutureHouse task tracking and review explanation
+alter table experiments add column if not exists review_explanation text;
+
 -- Rejection countdown: track when a study was rejected so it auto-deletes after 1 hour
 alter table experiments add column if not exists rejected_at timestamp with time zone;
 
@@ -154,3 +160,51 @@ alter table samples enable row level security;
 create policy "Allow all on samples" on samples for all using (true) with check (true);
 alter table data_submissions enable row level security;
 create policy "Allow all on data_submissions" on data_submissions for all using (true) with check (true);
+
+-- Analysis jobs table (AI-generated code execution via Modal)
+create table if not exists analysis_jobs (
+  id uuid default gen_random_uuid() primary key,
+  submission_id uuid references data_submissions(id) on delete cascade not null,
+  module_id uuid references modules(id) on delete cascade not null,
+  status text default 'pending' check (status in (
+    'pending', 'generating_code', 'executing', 'retrying', 'completed', 'failed', 'cancelled'
+  )),
+
+  -- AI-generated Python code
+  generated_code text,
+  code_language text default 'python',
+
+  -- Execution context sent to AI
+  prompt_context jsonb default '{}',
+
+  -- Modal execution details
+  modal_call_id text,
+  execution_stdout text,
+  execution_stderr text,
+  execution_duration_ms integer,
+
+  -- Results
+  figure_urls text[] default '{}',
+  output_file_urls text[] default '{}',
+  statistical_results jsonb default '{}',
+  interpretation text,
+
+  -- Error handling / retries
+  error_message text,
+  retry_count integer default 0,
+  max_retries integer default 3,
+
+  -- Audit
+  created_at timestamp with time zone default now(),
+  completed_at timestamp with time zone,
+
+  -- For re-analysis: optional user prompt for follow-up
+  follow_up_prompt text
+);
+
+create index if not exists idx_analysis_jobs_submission on analysis_jobs(submission_id);
+create index if not exists idx_analysis_jobs_module on analysis_jobs(module_id);
+create index if not exists idx_analysis_jobs_status on analysis_jobs(status);
+
+alter table analysis_jobs enable row level security;
+create policy "Allow all on analysis_jobs" on analysis_jobs for all using (true) with check (true);

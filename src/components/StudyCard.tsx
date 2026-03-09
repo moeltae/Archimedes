@@ -138,7 +138,7 @@ export default function StudyCard({
           </div>
 
           <Link
-            href={`/experiment/${study.id}`}
+            href={`/study/${study.id}`}
             className="block group"
           >
             <h3 className="text-lg font-semibold text-gray-900 group-hover:text-orange-600 transition-colors leading-tight">
@@ -166,10 +166,10 @@ export default function StudyCard({
             </div>
           )}
 
-          {study.status === "rejected" && study.rejected_at && !expired && (
+          {study.status === "rejected" && !expired && (
             <div className="mt-2">
               <RejectionCountdown
-                rejectedAt={study.rejected_at}
+                rejectedAt={study.rejected_at || study.created_at}
                 onExpired={() => setExpired(true)}
               />
             </div>
@@ -194,14 +194,14 @@ export default function StudyCard({
             </button>
 
             <Link
-              href={`/experiment/${study.id}`}
+              href={`/study/${study.id}`}
               className="text-sm text-gray-500 hover:text-gray-700"
             >
               {study.experiments?.length || 0} experiment{study.experiments?.length === 1 ? "" : "s"}
             </Link>
 
             <Link
-              href={`/experiment/${study.id}#comments`}
+              href={`/study/${study.id}#comments`}
               className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
             >
               <MessageSquare size={14} />

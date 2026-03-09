@@ -54,5 +54,67 @@ export async function POST(
       .eq("id", moduleId);
   }
 
+  // Auto-trigger AI analysis in the background
+  if (data && (submission_type === "results" || submission_type === "partial")) {
+    const baseUrl =
+      process.env.NEXT_PUBLIC_BASE_URL ||
+      req.nextUrl.origin;
+
+    // 1. Trigger analysis for the submitting module itself
+    fetch(`${baseUrl}/api/analysis/trigger`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        submission_id: data.id,
+        module_id: moduleId,
+        session_id,
+      }),
+    }).catch((err) =>
+      console.error("[submit] Failed to trigger analysis:", err)
+    );
+
+    // 2. Auto-trigger AI-owned analysis modules in the same study
+    // These are sibling modules marked as is_analysis and claimed by the AI agent
+    (async () => {
+      try {
+        // Find the parent experiment for this module
+        const { data: thisModule } = await supabase
+          .from("modules")
+          .select("experiment_id")
+          .eq("id", moduleId)
+          .single();
+
+        if (!thisModule) return;
+
+        // Find AI-owned analysis modules in the same study
+        const { data: analysisModules } = await supabase
+          .from("modules")
+          .select("id")
+          .eq("experiment_id", thisModule.experiment_id)
+          .eq("is_analysis", true)
+          .eq("claimed_by", "archimedes-ai")
+          .neq("id", moduleId); // skip if the submitting module is itself an analysis module
+
+        if (analysisModules && analysisModules.length > 0) {
+          for (const analysisMod of analysisModules) {
+            fetch(`${baseUrl}/api/analysis/trigger`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                submission_id: data.id,
+                module_id: analysisMod.id, // analysis module's context guides the analysis
+                session_id: "archimedes-ai",
+              }),
+            }).catch((err) =>
+              console.error("[submit] Failed to trigger AI analysis module:", err)
+            );
+          }
+        }
+      } catch (err) {
+        console.error("[submit] Failed to check for AI analysis modules:", err);
+      }
+    })();
+  }
+
   return NextResponse.json({ submission: data });
 }

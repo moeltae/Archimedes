@@ -51,18 +51,25 @@ export async function POST(req: NextRequest) {
   // Decompose into experiments
   const experiments = await decomposeStudy(study);
 
+  const AI_AGENT_SESSION = "archimedes-ai";
+  const AI_AGENT_LAB = "Archimedes AI";
+
   const experimentInserts = experiments.map(
     (e: {
       module_name: string;
       description: string;
       expertise_required: string;
+      is_analysis?: boolean;
     }) => ({
       experiment_id: studyData.id,
       module_name: e.module_name,
       description: e.description,
       expertise_required: e.expertise_required,
-      status: "open",
-      assigned_lab: null,
+      is_analysis: e.is_analysis || false,
+      // AI agent auto-claims analysis modules
+      status: e.is_analysis ? "claimed" : "open",
+      assigned_lab: e.is_analysis ? AI_AGENT_LAB : null,
+      claimed_by: e.is_analysis ? AI_AGENT_SESSION : null,
     })
   );
 

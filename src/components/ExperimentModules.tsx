@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Loader2,
   Sparkles,
+  Bot,
 } from "lucide-react";
 
 interface Props {
@@ -291,6 +292,9 @@ export default function ExperimentModules({ experiments, studyId, onUpdate, fund
                   <div className="min-w-0" onClick={(e) => e.stopPropagation()}>
                     {exp.assigned_lab ? (
                       <span className="group/lab inline-flex items-center gap-1 text-xs font-medium text-gray-700 truncate">
+                        {exp.claimed_by === "archimedes-ai" && (
+                          <Bot size={12} className="text-indigo-500 shrink-0" />
+                        )}
                         {exp.assigned_lab}
                         {exp.claimed_by === sessionId && (
                           <button
@@ -300,6 +304,16 @@ export default function ExperimentModules({ experiments, studyId, onUpdate, fund
                             title="Unclaim this experiment"
                           >
                             <X size={12} />
+                          </button>
+                        )}
+                        {exp.claimed_by === "archimedes-ai" && (
+                          <button
+                            onClick={() => handleVolunteer(exp.id)}
+                            disabled={busy}
+                            className="opacity-0 group-hover/lab:opacity-100 p-0.5 rounded hover:bg-orange-100 hover:text-orange-600 transition-all disabled:opacity-40"
+                            title="Override AI — claim for your lab"
+                          >
+                            <Hand size={10} />
                           </button>
                         )}
                       </span>
@@ -424,7 +438,15 @@ export default function ExperimentModules({ experiments, studyId, onUpdate, fund
                       </div>
                     </div>
                     {exp.assigned_lab && (
-                      <p className="text-xs text-gray-400 mt-2">Assigned lab: {exp.assigned_lab}</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <p className="text-xs text-gray-400">Assigned lab: {exp.assigned_lab}</p>
+                        {exp.claimed_by === "archimedes-ai" && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded-full">
+                            <Bot size={10} />
+                            Auto-runs on data
+                          </span>
+                        )}
+                      </div>
                     )}
                     {showBudgetCol && experiments.length > 0 && (() => {
                       const pct = exp.budget_pct ?? (100 / experiments.length);

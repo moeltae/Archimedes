@@ -111,6 +111,9 @@ Return a JSON array of experiments, each with:
 - "module_name": Short name (e.g. "Cell Culture Assay")
 - "description": What needs to be done (2-3 sentences)
 - "expertise_required": What expertise a lab needs (e.g. "Molecular biology, cell culture")
+- "is_analysis": boolean — true if this module is primarily computational analysis, statistical analysis, data integration, or bioinformatics (i.e. it analyzes raw data produced by other modules rather than generating raw data itself). false for wet lab work, data collection, sample preparation, etc.
+
+Every study should have at least one analysis module that integrates and analyzes results from the other modules.
 
 Return ONLY the JSON array, no markdown.`,
       },
@@ -370,4 +373,246 @@ Return ONLY the JSON, no markdown.`,
   });
 
   return parseJSON(response.choices[0].message.content);
+}
+
+// ── Analysis Code Generation ──
+
+export interface AnalysisContext {
+  hypothesis: string;
+  study_design: string;
+  module_name: string;
+  module_description: string;
+  expertise_required: string;
+  results_summary: string;
+  results_data: Record<string, unknown>;
+  follow_up_prompt?: string;
+}
+
+/** Description of a file available in the sandbox for the AI prompt */
+interface FileDescription {
+  filename: string;
+  mime_type: string;
+  has_parsed_data: boolean;
+}
+
+const ANALYSIS_SYSTEM_PROMPT = `You are an expert data scientist analyzing experimental results for a scientific study. You generate Python code that performs rigorous statistical analysis and creates publication-quality visualizations.
+
+Rules:
+- Available packages: numpy, pandas, scipy, matplotlib, seaborn, scikit-learn, statsmodels, math, statistics, json, collections, PIL (Pillow), cv2 (OpenCV)
+- The variable \`data\` is a Python dict containing the submission's results_data (already available in scope). For uploaded CSV/JSON files, the parsed content is also merged into \`data\` under keys like \`file_<filename>\`.
+- The variable \`results_summary\` is a string with the text summary of results (already available in scope)
+- FIGURES_DIR is a string path to save output figures (already available in scope)
+- INPUT_DIR is a string path where uploaded files are saved on disk (already available in scope)
+- FILE_PATHS is a Python dict mapping filename -> absolute file path (already available in scope). Use this to read uploaded files directly.
+
+FILE ACCESS:
+- CSV files: Use \`pd.read_csv(FILE_PATHS["filename.csv"])\` to load as DataFrame
+- Excel files: Use \`pd.read_excel(FILE_PATHS["filename.xlsx"])\` to load as DataFrame
+- JSON files: Use \`json.load(open(FILE_PATHS["filename.json"]))\` to load
+- Image files (PNG, JPG, WEBP): Use \`from PIL import Image; img = Image.open(FILE_PATHS["image.png"])\` or \`import cv2; img = cv2.imread(FILE_PATHS["image.png"])\`
+- For images: you can analyze intensity, color channels, detect features, measure areas, compare images, etc.
+- Always check if a file exists in FILE_PATHS before trying to read it
+
+DATA QUALITY:
+- Before analyzing, assess whether the provided data is actually sufficient to test the hypothesis
+- Check if the data contains evidence relevant to the experiment (e.g., if the study is about neural probes, check whether probes are actually visible in images)
+- Print a clear DATA QUALITY ASSESSMENT section to stdout BEFORE any analysis, noting: what data was provided, what's missing, and whether the data is adequate
+- If samples data is in \`data["samples"]\`, report how many are completed vs pending/failed and how many have files attached
+- Be honest: if the data cannot support meaningful conclusions about the hypothesis, say so clearly
+- Do NOT fabricate findings — only report what the data actually shows
+
+OUTPUT:
+- Save all figures to FIGURES_DIR using: plt.savefig(os.path.join(FIGURES_DIR, "figure_N.png"), dpi=150, bbox_inches="tight", facecolor="white")
+- After each figure, call plt.close() to free memory
+- Save any generated data files (processed CSVs, result tables, etc.) to OUTPUT_DIR using: df.to_csv(os.path.join(OUTPUT_DIR, "results.csv"), index=False) or similar
+- Print all statistical test results clearly to stdout
+- At the end, print a line: STATS_JSON: followed by a JSON object summarizing key statistical results (include a "data_quality" field with "sufficient", "partial", or "insufficient")
+- Include appropriate statistical tests based on the data and experiment type
+- Always include descriptive statistics (mean, std, n, etc.)
+- Add clear axis labels, titles, and legends to all plots
+- Use seaborn style for clean visuals: import seaborn as sns; sns.set_theme(style="whitegrid")
+- Handle edge cases: check for empty data, NaN values, insufficient sample sizes
+- Do NOT use plt.show() — only savefig
+- Do NOT try to access the network`;
+
+export async function generateAnalysisCode(
+  context: AnalysisContext,
+  files: FileDescription[] = []
+): Promise<{ code: string; explanation: string }> {
+  const dataPreview = JSON.stringify(context.results_data, null, 2).slice(0, 3000);
+
+  // Build file descriptions for the prompt
+  let filesSection = "";
+  if (files.length > 0) {
+    const fileList = files
+      .map((f) => {
+        const type = f.mime_type.startsWith("image/")
+          ? "IMAGE"
+          : f.mime_type.includes("csv")
+            ? "CSV"
+            : f.mime_type.includes("json")
+              ? "JSON"
+              : f.mime_type.includes("excel") || f.mime_type.includes("spreadsheet")
+                ? "EXCEL"
+                : f.mime_type.includes("pdf")
+                  ? "PDF"
+                  : "FILE";
+        return `  - ${f.filename} (${type}, ${f.mime_type})${f.has_parsed_data ? " [parsed data available in data dict]" : " [raw file on disk]"}`;
+      })
+      .join("\n");
+    filesSection = `\nUPLOADED FILES (available via FILE_PATHS dict):\n${fileList}\n`;
+  }
+
+  const userPrompt = `Analyze the experimental data for this study module.
+
+EXPERIMENT CONTEXT:
+- Hypothesis: ${context.hypothesis}
+- Study Design: ${context.study_design}
+- Module: ${context.module_name}
+- Module Description: ${context.module_description}
+- Expertise Area: ${context.expertise_required}
+
+SUBMITTED DATA:
+- Results Summary: ${context.results_summary}
+- Data (preview): ${dataPreview}
+- Data keys: ${Object.keys(context.results_data).join(", ") || "none"}
+${filesSection}
+${context.follow_up_prompt ? `FOLLOW-UP REQUEST: ${context.follow_up_prompt}` : ""}
+
+Generate Python analysis code. Return a JSON object with:
+- "code": The complete Python code string
+- "explanation": A brief (2-3 sentence) explanation of what the analysis does
+
+Return ONLY the JSON, no markdown.`;
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      { role: "system", content: ANALYSIS_SYSTEM_PROMPT },
+      { role: "user", content: userPrompt },
+    ],
+    temperature: 0.4,
+    max_tokens: 4096,
+  });
+
+  const result = parseJSON(response.choices[0].message.content, {
+    code: "",
+    explanation: "",
+  }) as { code: string; explanation: string };
+
+  return result;
+}
+
+export async function fixAnalysisCode(
+  code: string,
+  error: string,
+  context: AnalysisContext
+): Promise<{ code: string; explanation: string }> {
+  const dataPreview = JSON.stringify(context.results_data, null, 2).slice(0, 2000);
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: ANALYSIS_SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: `The following analysis code failed with an error. Fix it.
+
+EXPERIMENT CONTEXT:
+- Hypothesis: ${context.hypothesis}
+- Module: ${context.module_name}
+- Data keys: ${Object.keys(context.results_data).join(", ") || "none"}
+- Data preview: ${dataPreview}
+- Files on disk (FILE_PATHS dict): Check FILE_PATHS for available files. Use pd.read_csv(), pd.read_excel(), PIL.Image.open(), etc.
+
+FAILED CODE:
+\`\`\`python
+${code}
+\`\`\`
+
+ERROR:
+${error}
+
+Fix the code so it runs successfully. Common issues: wrong column names, data shape mismatches, missing imports, NaN handling.
+
+Return a JSON object with:
+- "code": The fixed Python code
+- "explanation": What you fixed (1 sentence)
+
+Return ONLY the JSON, no markdown.`,
+      },
+    ],
+    temperature: 0.3,
+    max_tokens: 4096,
+  });
+
+  return parseJSON(response.choices[0].message.content, {
+    code,
+    explanation: "Unable to fix",
+  }) as { code: string; explanation: string };
+}
+
+export async function interpretAnalysisResults(
+  context: AnalysisContext,
+  stdout: string,
+  figureCount: number
+): Promise<string> {
+  // Build sample completeness summary if available
+  let sampleInfo = "";
+  const samples = context.results_data?.samples;
+  if (Array.isArray(samples) && samples.length > 0) {
+    const total = samples.length;
+    const completed = samples.filter((s: Record<string, unknown>) => s.status === "completed").length;
+    const withFiles = samples.filter((s: Record<string, unknown>) => (s.file_count as number) > 0).length;
+    sampleInfo = `\nSAMPLE COMPLETENESS:
+- ${completed}/${total} samples completed
+- ${withFiles}/${total} samples have data files attached
+- ${total - completed} samples still pending/failed`;
+  }
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content:
+          `You are a rigorous scientific peer reviewer interpreting experimental results. You are SKEPTICAL by default. Your job is to honestly assess what the data shows — and equally important, what it does NOT show.
+
+Key principles:
+- NEVER claim the data supports a hypothesis unless there is direct, specific evidence for it
+- If the data is insufficient, incomplete, or irrelevant to the hypothesis, say so clearly
+- If sample coverage is poor (many incomplete/missing samples), flag this as a major limitation
+- If an image or dataset doesn't contain the expected experimental elements (e.g., no probe visible in a "probe study"), point that out
+- Do NOT invent or assume findings that aren't explicitly in the analysis output
+- Be constructive: explain what data WOULD be needed to properly test the hypothesis`,
+      },
+      {
+        role: "user",
+        content: `Interpret these analysis results in the context of the experiment.
+
+EXPERIMENT:
+- Hypothesis: ${context.hypothesis}
+- Module: ${context.module_name} — ${context.module_description}
+- Results Summary (from lab): ${context.results_summary}
+${sampleInfo}
+
+ANALYSIS OUTPUT:
+${stdout.slice(0, 4000)}
+
+${figureCount} figure(s) were generated.
+
+Write a concise interpretation (3-5 sentences) that:
+1. Honestly states whether the data is sufficient to evaluate the hypothesis — if not, say so
+2. Reports only findings that are directly supported by the analysis output
+3. Flags major gaps: incomplete samples, missing data, or data that doesn't match what the experiment requires
+4. Suggests what additional data or steps are needed
+
+Return ONLY the interpretation text, no JSON wrapper.`,
+      },
+    ],
+    temperature: 0.4,
+    max_tokens: 500,
+  });
+
+  return response.choices[0].message.content?.trim() || "Analysis complete.";
 }

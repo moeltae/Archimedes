@@ -118,7 +118,7 @@ export default function NavSidebar({
           }`}
         >
           <Beaker size={20} />
-          Your Experiments
+          Experiments
         </Link>
       </div>
 

@@ -518,7 +518,7 @@ export default function SubmitHypothesis() {
                       {result.experiment && (
                         <button
                           onClick={() =>
-                            router.push(`/experiment/${result.experiment!.id}`)
+                            router.push(`/study/${result.experiment!.id}`)
                           }
                           className="px-5 py-2.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors shadow-sm"
                         >
@@ -581,7 +581,7 @@ export default function SubmitHypothesis() {
                     {result.similar_existing.map((exp) => (
                       <Link
                         key={exp.id}
-                        href={`/experiment/${exp.id}`}
+                        href={`/study/${exp.id}`}
                         className="block px-3 py-2.5 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-100"
                       >
                         <p className="text-sm font-medium text-gray-800">{exp.title}</p>

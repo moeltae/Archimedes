@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
     });
 
   if (error) {
+    console.error("Supabase storage upload error:", error.message, error);
     // If bucket doesn't exist, return a helpful error
     if (error.message?.includes("not found") || error.message?.includes("Bucket")) {
       return NextResponse.json(

@@ -1,12 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Plus, Search } from "lucide-react";
 import Image from "next/image";
 import { useSearch } from "./SearchContext";
 
 export default function Navbar() {
   const { searchQuery, setSearchQuery } = useSearch();
+  const pathname = usePathname();
+
+  const isExperimentsSection = pathname.startsWith("/my-experiments");
+  const placeholder = isExperimentsSection
+    ? "Search experiments..."
+    : "Search studies...";
 
   return (
     <nav className="sticky top-0 z-50 bg-white border-b border-gray-200">
@@ -24,7 +31,7 @@ export default function Navbar() {
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search studies..."
+                placeholder={placeholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-4 py-1.5 bg-gray-100 rounded-full text-sm focus:outline-none focus:bg-white transition-colors"

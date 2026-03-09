@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   // Query modules directly by claimed_by session ID
   const { data: mods, error } = await supabase
     .from("modules")
-    .select("*, experiment:experiments(title, hypothesis, study_design, funding_goal, funded_amount)")
+    .select("*, experiment:experiments(title, hypothesis, study_design, funding_goal, funded_amount, tags)")
     .eq("claimed_by", sessionId)
     .order("created_at", { ascending: false });
 
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   // Enrich with sample counts and funding data
   const modules = await Promise.all(
     (mods || []).map(async (mod) => {
-      const experiment = mod.experiment as { title: string; hypothesis: string; study_design: string; funding_goal: number; funded_amount: number } | null;
+      const experiment = mod.experiment as { title: string; hypothesis: string; study_design: string; funding_goal: number; funded_amount: number; tags: string[] } | null;
 
       const { count: samplesTotal } = await supabase
         .from("samples")
@@ -57,6 +57,7 @@ export async function GET(req: NextRequest) {
         experiment_title: experiment?.title || "",
         experiment_hypothesis: experiment?.hypothesis || "",
         experiment_study_design: experiment?.study_design || "",
+        experiment_tags: experiment?.tags || [],
         claimed_at: mod.created_at,
         samples_total: samplesTotal || 0,
         samples_completed: samplesCompleted || 0,

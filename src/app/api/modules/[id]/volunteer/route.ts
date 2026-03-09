@@ -27,7 +27,8 @@ export async function POST(
   if (!mod) {
     return NextResponse.json({ error: "Module not found" }, { status: 404 });
   }
-  if (mod.status !== "open") {
+  // Allow overriding AI-claimed modules, but block if claimed by a real user
+  if (mod.status !== "open" && mod.claimed_by !== "archimedes-ai") {
     return NextResponse.json({ error: "Module already claimed" }, { status: 409 });
   }
 

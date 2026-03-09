@@ -15,12 +15,36 @@ export async function GET(
   }
 
   // Get module with parent experiment, verify ownership via claimed_by
-  const { data: mod } = await supabase
+  let { data: mod } = await supabase
     .from("modules")
     .select("*, experiment:experiments(title, hypothesis, study_design, tags, status, funding_goal, funded_amount)")
     .eq("id", moduleId)
     .eq("claimed_by", sessionId)
     .single();
+
+  // If not directly owned, allow access to sibling modules in the same study
+  // (e.g. AI analysis modules in a study where the user has a claimed module)
+  if (!mod) {
+    const { data: targetMod } = await supabase
+      .from("modules")
+      .select("*, experiment:experiments(title, hypothesis, study_design, tags, status, funding_goal, funded_amount)")
+      .eq("id", moduleId)
+      .single();
+
+    if (targetMod) {
+      const { data: userModInStudy } = await supabase
+        .from("modules")
+        .select("id")
+        .eq("experiment_id", targetMod.experiment_id)
+        .eq("claimed_by", sessionId)
+        .limit(1)
+        .single();
+
+      if (userModInStudy) {
+        mod = targetMod;
+      }
+    }
+  }
 
   if (!mod) {
     return NextResponse.json({ error: "Not your module" }, { status: 403 });
@@ -95,9 +119,17 @@ export async function GET(
     .eq("module_id", moduleId)
     .order("submitted_at", { ascending: false });
 
+  // Get analysis jobs for this module
+  const { data: analysisJobs } = await supabase
+    .from("analysis_jobs")
+    .select("*")
+    .eq("module_id", moduleId)
+    .order("created_at", { ascending: false });
+
   return NextResponse.json({
     module: { ...mod, total_modules_in_study: totalModulesInStudy || 1 },
     samples: samples || [],
     submissions: submissions || [],
+    analysisJobs: analysisJobs || [],
   });
 }

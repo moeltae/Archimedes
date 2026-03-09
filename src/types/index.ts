@@ -99,6 +99,7 @@ export interface StudyExperiment {
   claimed_by?: string | null;
   budget_pct?: number | null;
   budget_rationale?: string | null;
+  is_analysis?: boolean;
 }
 
 export interface Vote {
@@ -146,6 +147,7 @@ export interface MyModule extends StudyExperiment {
   experiment_title: string;
   experiment_hypothesis: string;
   experiment_study_design: string;
+  experiment_tags: string[];
   claimed_at: string;
   samples_total: number;
   samples_completed: number;
@@ -174,4 +176,28 @@ export interface Comment {
   body: string;
   created_at: string;
   replies?: Comment[];
+}
+
+export interface AnalysisJob {
+  id: string;
+  submission_id: string;
+  module_id: string;
+  status: 'pending' | 'generating_code' | 'executing' | 'retrying' | 'completed' | 'failed' | 'cancelled';
+  generated_code: string | null;
+  code_language: string;
+  prompt_context: Record<string, unknown>;
+  modal_call_id: string | null;
+  execution_stdout: string | null;
+  execution_stderr: string | null;
+  execution_duration_ms: number | null;
+  figure_urls: string[];
+  output_file_urls: string[];
+  statistical_results: Record<string, unknown>;
+  interpretation: string | null;
+  error_message: string | null;
+  retry_count: number;
+  max_retries: number;
+  created_at: string;
+  completed_at: string | null;
+  follow_up_prompt: string | null;
 }

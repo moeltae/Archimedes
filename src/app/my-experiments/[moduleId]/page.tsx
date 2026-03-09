@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback, useRef, use } from "react";
 import Link from "next/link";
 import NavSidebar from "@/components/NavSidebar";
+import AnalysisResults from "@/components/AnalysisResults";
 import { getSessionId } from "@/lib/session";
-import { Sample, DataSubmission } from "@/types";
+import { Sample, DataSubmission, AnalysisJob } from "@/types";
 import {
   ArrowLeft,
   FlaskConical,
@@ -80,6 +81,7 @@ export default function ModuleWorkbench({
   const [mod, setMod] = useState<ModuleDetail | null>(null);
   const [samples, setSamples] = useState<Sample[]>([]);
   const [submissions, setSubmissions] = useState<DataSubmission[]>([]);
+  const [analysisJobs, setAnalysisJobs] = useState<AnalysisJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -101,6 +103,7 @@ export default function ModuleWorkbench({
   const [fileUploadTarget, setFileUploadTarget] = useState<string | null>(null);
   const bulkFileInputRef = useRef<HTMLInputElement>(null);
   const [sampleDragOver, setSampleDragOver] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const sessionId = typeof window !== "undefined" ? getSessionId() : "";
 
@@ -118,6 +121,7 @@ export default function ModuleWorkbench({
     setMod(data.module);
     setSamples(data.samples || []);
     setSubmissions(data.submissions || []);
+    setAnalysisJobs(data.analysisJobs || []);
     setLoading(false);
   }, [moduleId, sessionId]);
 
@@ -164,6 +168,7 @@ export default function ModuleWorkbench({
     if (files.length === 0) return;
 
     setSampleUploading(true);
+    setUploadError(null);
     const sample = samples.find((s) => s.id === sampleId);
     const existingUrls = sample?.file_urls || [];
     const newUrls: string[] = [];
@@ -175,9 +180,13 @@ export default function ModuleWorkbench({
       try {
         const res = await fetch("/api/upload", { method: "POST", body: form });
         const data = await res.json();
+        if (!res.ok) {
+          setUploadError(data.error || "Upload failed");
+          continue;
+        }
         if (data.url) newUrls.push(data.url);
-      } catch {
-        // skip failed uploads
+      } catch (err) {
+        setUploadError("Network error during upload");
       }
     }
 
@@ -224,6 +233,7 @@ export default function ModuleWorkbench({
     if (files.length === 0) return;
 
     setSampleUploading(true);
+    setUploadError(null);
     const newUrls: string[] = [];
 
     for (const file of files) {
@@ -233,9 +243,13 @@ export default function ModuleWorkbench({
       try {
         const res = await fetch("/api/upload", { method: "POST", body: form });
         const data = await res.json();
+        if (!res.ok) {
+          setUploadError(data.error || "Upload failed");
+          continue;
+        }
         if (data.url) newUrls.push(data.url);
-      } catch {
-        // skip failed uploads
+      } catch (err) {
+        setUploadError("Network error during upload");
       }
     }
 
@@ -293,6 +307,7 @@ export default function ModuleWorkbench({
 
     // Upload attached files first
     const uploadedUrls: string[] = [];
+    setUploadError(null);
     if (attachedFiles.length > 0) {
       setUploadingFiles(true);
       for (const file of attachedFiles) {
@@ -302,9 +317,13 @@ export default function ModuleWorkbench({
         try {
           const uploadRes = await fetch("/api/upload", { method: "POST", body: form });
           const uploadData = await uploadRes.json();
+          if (!uploadRes.ok) {
+            setUploadError(uploadData.error || "Upload failed");
+            continue;
+          }
           if (uploadData.url) uploadedUrls.push(uploadData.url);
-        } catch {
-          // skip failed uploads
+        } catch (err) {
+          setUploadError("Network error during upload");
         }
       }
       setUploadingFiles(false);
@@ -397,7 +416,7 @@ export default function ModuleWorkbench({
               <p className="text-sm text-gray-500 mt-1">
                 Part of:{" "}
                 <Link
-                  href={`/experiment/${mod.experiment_id}`}
+                  href={`/study/${mod.experiment_id}`}
                   className="text-orange-500 hover:underline"
                 >
                   {mod.experiment?.title}
@@ -432,6 +451,18 @@ export default function ModuleWorkbench({
                 >
                   <Play size={14} />
                   Start Work
+                </button>
+              )}
+              {mod.status === "completed" && (
+                <button
+                  onClick={() => {
+                    handleModuleStatus("in_progress");
+                    setSubmitted(false);
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
+                >
+                  <Undo2 size={14} />
+                  Reopen Module
                 </button>
               )}
             </div>
@@ -746,6 +777,9 @@ export default function ModuleWorkbench({
                                 <span className="block text-gray-400 mt-0.5">PDF, images, CSV, Excel, JSON — max 10 MB</span>
                               </p>
                             )}
+                            {uploadError && (
+                              <p className="text-xs text-red-500 mt-1.5">{uploadError}</p>
+                            )}
                           </div>
                         </div>
                       )}
@@ -756,8 +790,8 @@ export default function ModuleWorkbench({
             )}
           </div>
 
-          {/* Data submission form — auto-shown when in progress */}
-          {mod.status === "in_progress" && !submitted && submissions.length === 0 && (
+          {/* Data submission form — shown when in progress */}
+          {mod.status === "in_progress" && !submitted && (
             <div className="bg-white border border-gray-200 rounded-lg p-5 mb-5">
               <h2 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
                 <Send size={16} className="text-green-500" />
@@ -949,25 +983,59 @@ export default function ModuleWorkbench({
                     {sub.results_summary}
                   </p>
                   {sub.file_urls && sub.file_urls.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {sub.file_urls.map((url, i) => (
-                        <a
-                          key={i}
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors"
-                        >
-                          <ExternalLink size={11} />
-                          {(() => {
-                            try {
-                              return new URL(url).hostname.replace("www.", "");
-                            } catch {
-                              return `Link ${i + 1}`;
-                            }
-                          })()}
-                        </a>
-                      ))}
+                    <div className="mt-3 space-y-2">
+                      {/* Inline image previews */}
+                      {sub.file_urls
+                        .filter((url) => /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(url))
+                        .length > 0 && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {sub.file_urls
+                            .filter((url) => /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(url))
+                            .map((url, i) => (
+                              <a
+                                key={`img-${i}`}
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block border border-gray-100 rounded-lg overflow-hidden bg-gray-50 hover:border-gray-300 transition-colors"
+                              >
+                                <img
+                                  src={url}
+                                  alt={`Attachment ${i + 1}`}
+                                  className="w-full max-h-64 object-contain"
+                                />
+                              </a>
+                            ))}
+                        </div>
+                      )}
+                      {/* Non-image file links */}
+                      <div className="flex flex-wrap gap-2">
+                        {sub.file_urls
+                          .filter((url) => !/\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(url))
+                          .map((url, i) => {
+                            const filename = (() => {
+                              try {
+                                const path = new URL(url).pathname;
+                                const raw = path.split("/").pop() || `File ${i + 1}`;
+                                return decodeURIComponent(raw).replace(/^\d+_/, "");
+                              } catch {
+                                return `File ${i + 1}`;
+                              }
+                            })();
+                            return (
+                              <a
+                                key={`file-${i}`}
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors"
+                              >
+                                <ExternalLink size={11} />
+                                {filename}
+                              </a>
+                            );
+                          })}
+                      </div>
                     </div>
                   )}
                   {sub.notes && (
@@ -985,6 +1053,16 @@ export default function ModuleWorkbench({
               ))}
             </div>
           )}
+
+          {/* AI Analysis Results */}
+          {submissions.length > 0 && submissions.map((sub) => (
+            <AnalysisResults
+              key={`analysis-${sub.id}`}
+              moduleId={moduleId}
+              submissionId={sub.id}
+              initialJobs={analysisJobs}
+            />
+          ))}
 
           {/* Completed banner */}
           {submitted && (

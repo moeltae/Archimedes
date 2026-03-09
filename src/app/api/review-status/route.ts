@@ -124,10 +124,31 @@ export async function GET(req: NextRequest) {
               .eq("id", studyId)
               .single();
 
+            const finalStatus = updated?.status !== "pending_review"
+              ? updated?.status
+              : (hasSuccessful ? "rejected" : "proposed");
+            const finalScore = updated?.novelty_score ?? noveltyScore;
+
+            // Write final status back to DB if still pending
+            if (updated?.status === "pending_review") {
+              const dbUpdate: Record<string, unknown> = {
+                status: finalStatus,
+                novelty_score: finalScore,
+                review_explanation: (result.answer || "").slice(0, 5000),
+              };
+              if (finalStatus === "rejected") {
+                dbUpdate.rejected_at = new Date().toISOString();
+              }
+              await supabase
+                .from("experiments")
+                .update(dbUpdate)
+                .eq("id", studyId);
+            }
+
             send({
               phase: "done",
-              status: updated?.status || (hasSuccessful ? "rejected" : "proposed"),
-              novelty_score: updated?.novelty_score ?? noveltyScore,
+              status: finalStatus,
+              novelty_score: finalScore,
               answer: (result.answer || "").slice(0, 500),
             });
             break;
