@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, use } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   FlaskConical,
@@ -14,6 +15,10 @@ import {
   Users,
   Target,
   Beaker,
+  Trash2,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Study, StudyExperiment, getFieldColor } from "@/types";
@@ -50,6 +55,11 @@ export default function StudyDetail({
   const [downvotes, setDownvotes] = useState(0);
   const [showFund, setShowFund] = useState(false);
   const [funded, setFunded] = useState(0);
+  const [deleting, setDeleting] = useState(false);
+  const [editingField, setEditingField] = useState<"title" | "hypothesis" | "study_design" | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const router = useRouter();
 
   const reloadModules = useCallback(async () => {
     const { data: exps } = await supabase
@@ -153,6 +163,46 @@ export default function StudyDetail({
 
   const fundingPercent = Math.min(100, (funded / study.funding_goal) * 100);
   const totalExperiments = experiments.length;
+  const isUserSubmitted = study.paper ? !study.paper.source_url : false;
+
+  async function handleDelete() {
+    if (!study) return;
+    if (!confirm("Are you sure you want to delete this study? This cannot be undone.")) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/experiments/${study.id}`, { method: "DELETE" });
+      if (res.ok) {
+        router.push("/");
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to delete study");
+        setDeleting(false);
+      }
+    } catch {
+      alert("Failed to delete study");
+      setDeleting(false);
+    }
+  }
+
+  async function handleSaveField() {
+    if (!study || !editingField || !editValue.trim() || saving) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/experiments/${study.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [editingField]: editValue }),
+      });
+      if (res.ok) {
+        setStudy((prev) => prev ? { ...prev, [editingField]: editValue.trim() } : prev);
+        setEditingField(null);
+        setEditValue("");
+      }
+    } catch {
+      // silently fail
+    }
+    setSaving(false);
+  }
 
   return (
     <div className="flex min-h-[calc(100vh-48px)]">
@@ -160,14 +210,30 @@ export default function StudyDetail({
 
       <main className="flex-1 min-w-0 overflow-y-auto">
         <div className="px-6 py-4">
-          {/* Back link */}
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4"
-          >
-            <ArrowLeft size={14} />
-            Back to feed
-          </Link>
+          {/* Back link + delete */}
+          <div className="flex items-center justify-between mb-4">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700"
+            >
+              <ArrowLeft size={14} />
+              Back to feed
+            </Link>
+            {isUserSubmitted && (
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors"
+              >
+                {deleting ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Trash2 size={12} />
+                )}
+                Delete Study
+              </button>
+            )}
+          </div>
 
           {/* ── Hero row: Title + vote + funding ── */}
           <div className="flex gap-4 items-start mb-5">
@@ -192,9 +258,30 @@ export default function StudyDetail({
 
             {/* Title area */}
             <div className="flex-1 min-w-0">
-              <h1 className="text-2xl font-bold text-gray-900 leading-tight">
-                {study.title}
-              </h1>
+              {editingField === "title" ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    autoFocus
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSaveField();
+                      if (e.key === "Escape") { setEditingField(null); setEditValue(""); }
+                    }}
+                    className="text-2xl font-bold text-gray-900 leading-tight border border-blue-300 rounded-lg px-2 py-1 w-full focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                  <button onClick={handleSaveField} disabled={saving} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg"><Check size={18} /></button>
+                  <button onClick={() => { setEditingField(null); setEditValue(""); }} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg"><X size={18} /></button>
+                </div>
+              ) : (
+                <h1
+                  className="text-2xl font-bold text-gray-900 leading-tight group/title cursor-pointer"
+                  onClick={() => { setEditingField("title"); setEditValue(study.title); }}
+                >
+                  {study.title}
+                  <Pencil size={14} className="inline ml-2 opacity-0 group-hover/title:opacity-100 text-gray-400 transition-opacity" />
+                </h1>
+              )}
               <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
                 <span className="flex items-center gap-1"><Clock size={12} />{timeAgo(study.created_at)}</span>
                 <span className="flex items-center gap-1"><Users size={12} />{totalExperiments} experiments</span>
@@ -258,18 +345,86 @@ export default function StudyDetail({
             {/* Left: Hypothesis + Study design */}
             <div className="xl:col-span-3 flex flex-col gap-4">
               <div className="bg-white border border-gray-200 rounded-lg p-5">
-                <h2 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2">
-                  <Target size={16} className="text-orange-500" />
-                  Hypothesis
+                <h2 className="text-sm font-bold text-gray-900 mb-2 flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Target size={16} className="text-orange-500" />
+                    Hypothesis
+                  </span>
+                  {editingField !== "hypothesis" && (
+                    <button
+                      onClick={() => { setEditingField("hypothesis"); setEditValue(study.hypothesis); }}
+                      className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )}
                 </h2>
-                <p className="text-sm text-gray-700 leading-relaxed">{study.hypothesis}</p>
+                {editingField === "hypothesis" ? (
+                  <div>
+                    <textarea
+                      autoFocus
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") { setEditingField(null); setEditValue(""); }
+                      }}
+                      rows={4}
+                      className="w-full text-sm text-gray-700 leading-relaxed border border-blue-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200 resize-y"
+                    />
+                    <div className="flex items-center gap-2 mt-2">
+                      <button onClick={handleSaveField} disabled={saving} className="px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-800 disabled:opacity-40 transition-colors flex items-center gap-1.5">
+                        {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                        Save
+                      </button>
+                      <button onClick={() => { setEditingField(null); setEditValue(""); }} className="px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-700 leading-relaxed">{study.hypothesis}</p>
+                )}
               </div>
               <div className="bg-white border border-gray-200 rounded-lg p-5 flex-1">
-                <h2 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2">
-                  <Beaker size={16} className="text-purple-500" />
-                  Study Design
+                <h2 className="text-sm font-bold text-gray-900 mb-2 flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Beaker size={16} className="text-purple-500" />
+                    Study Design
+                  </span>
+                  {editingField !== "study_design" && (
+                    <button
+                      onClick={() => { setEditingField("study_design"); setEditValue(study.study_design); }}
+                      className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )}
                 </h2>
-                <p className="text-sm text-gray-700 leading-relaxed">{study.study_design}</p>
+                {editingField === "study_design" ? (
+                  <div>
+                    <textarea
+                      autoFocus
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") { setEditingField(null); setEditValue(""); }
+                      }}
+                      rows={6}
+                      className="w-full text-sm text-gray-700 leading-relaxed border border-blue-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200 resize-y"
+                    />
+                    <div className="flex items-center gap-2 mt-2">
+                      <button onClick={handleSaveField} disabled={saving} className="px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-800 disabled:opacity-40 transition-colors flex items-center gap-1.5">
+                        {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                        Save
+                      </button>
+                      <button onClick={() => { setEditingField(null); setEditValue(""); }} className="px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-700 leading-relaxed">{study.study_design}</p>
+                )}
               </div>
             </div>
 

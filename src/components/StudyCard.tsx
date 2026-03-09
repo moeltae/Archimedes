@@ -10,6 +10,8 @@ import {
   Clock,
   ExternalLink,
   MessageSquare,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import { Study, getFieldColor } from "@/types";
 import { getSessionId } from "@/lib/session";
@@ -31,8 +33,10 @@ function timeAgo(dateStr: string) {
 
 export default function StudyCard({
   study,
+  onDelete,
 }: {
   study: Study;
+  onDelete?: (id: string) => void;
 }) {
   const [upvotes, setUpvotes] = useState(study.upvotes);
   const [downvotes, setDownvotes] = useState(study.downvotes);
@@ -41,6 +45,9 @@ export default function StudyCard({
   const [showFund, setShowFund] = useState(false);
   const [funded, setFunded] = useState(study.funded_amount);
   const [expired, setExpired] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const isUserSubmitted = study.paper ? !study.paper.source_url : false;
 
   // Load user's existing vote on mount
   useEffect(() => {
@@ -56,8 +63,12 @@ export default function StudyCard({
 
   // Sync props when parent refetches
   useEffect(() => {
-    setUpvotes(study.upvotes);
-    setDownvotes(study.downvotes);
+    if (study.upvotes !== undefined && study.downvotes !== undefined) {
+      setTimeout(() => {
+        setUpvotes(study.upvotes);
+        setDownvotes(study.downvotes);
+      }, 0);
+    }
   }, [study.upvotes, study.downvotes]);
 
   const score = upvotes - downvotes;
@@ -246,6 +257,32 @@ export default function StudyCard({
                 <ExternalLink size={12} />
                 Source Paper
               </a>
+            )}
+
+            {isUserSubmitted && (
+              <button
+                onClick={async () => {
+                  if (!confirm("Delete this study? This cannot be undone.")) return;
+                  setDeleting(true);
+                  try {
+                    const res = await fetch(`/api/experiments/${study.id}`, { method: "DELETE" });
+                    if (res.ok) {
+                      onDelete?.(study.id);
+                    } else {
+                      const data = await res.json();
+                      alert(data.error || "Failed to delete");
+                    }
+                  } catch {
+                    alert("Failed to delete");
+                  }
+                  setDeleting(false);
+                }}
+                disabled={deleting}
+                className="flex items-center gap-1 text-sm text-gray-400 hover:text-red-600 disabled:opacity-50 transition-colors"
+              >
+                {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                Delete
+              </button>
             )}
 
             <span

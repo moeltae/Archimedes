@@ -68,6 +68,9 @@ export default function ExperimentModules({ experiments, studyId, onUpdate, fund
   const [newName, setNewName] = useState("");
   const [busy, setBusy] = useState(false);
   const [allocating, setAllocating] = useState(false);
+  const [editingModuleField, setEditingModuleField] = useState<{ id: string; field: "description" | "expertise_required" } | null>(null);
+  const [editModuleValue, setEditModuleValue] = useState("");
+  const [savingModule, setSavingModule] = useState(false);
 
   const hasAllocations = experiments.some((e) => e.budget_pct != null);
   const showBudgetCol = fundedAmount > 0 || fundingGoal > 0;
@@ -172,6 +175,20 @@ export default function ExperimentModules({ experiments, studyId, onUpdate, fund
       method: "DELETE",
     });
     setBusy(false);
+    onUpdate();
+  }
+
+  async function handleSaveModuleField() {
+    if (!editingModuleField || savingModule) return;
+    setSavingModule(true);
+    await fetch(`/api/modules/${editingModuleField.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [editingModuleField.field]: editModuleValue }),
+    });
+    setEditingModuleField(null);
+    setEditModuleValue("");
+    setSavingModule(false);
     onUpdate();
   }
 
@@ -425,16 +442,74 @@ export default function ExperimentModules({ experiments, studyId, onUpdate, fund
                   >
                     <div className="grid grid-cols-2 gap-4 text-xs">
                       <div>
-                        <span className="font-semibold text-gray-700">Description</span>
-                        <p className="text-gray-600 mt-0.5 leading-relaxed">
-                          {exp.description || "No description provided."}
-                        </p>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="font-semibold text-gray-700">Description</span>
+                          {!(editingModuleField?.id === exp.id && editingModuleField?.field === "description") && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setEditingModuleField({ id: exp.id, field: "description" }); setEditModuleValue(exp.description || ""); }}
+                              className="p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-200/50 rounded transition-colors"
+                            >
+                              <Pencil size={11} />
+                            </button>
+                          )}
+                        </div>
+                        {editingModuleField?.id === exp.id && editingModuleField?.field === "description" ? (
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <textarea
+                              autoFocus
+                              value={editModuleValue}
+                              onChange={(e) => setEditModuleValue(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === "Escape") { setEditingModuleField(null); setEditModuleValue(""); } }}
+                              rows={3}
+                              className="w-full text-xs text-gray-700 border border-blue-300 rounded px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-200 resize-y"
+                            />
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <button onClick={handleSaveModuleField} disabled={savingModule} className="px-2 py-1 bg-gray-900 text-white text-[11px] font-medium rounded hover:bg-gray-800 disabled:opacity-40 flex items-center gap-1">
+                                {savingModule ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />} Save
+                              </button>
+                              <button onClick={() => { setEditingModuleField(null); setEditModuleValue(""); }} className="px-2 py-1 text-[11px] text-gray-500 hover:bg-gray-100 rounded">Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-gray-600 leading-relaxed">
+                            {exp.description || "No description provided."}
+                          </p>
+                        )}
                       </div>
                       <div>
-                        <span className="font-semibold text-gray-700">Expertise Required</span>
-                        <p className="text-gray-600 mt-0.5 leading-relaxed">
-                          {exp.expertise_required || "Not specified."}
-                        </p>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="font-semibold text-gray-700">Expertise Required</span>
+                          {!(editingModuleField?.id === exp.id && editingModuleField?.field === "expertise_required") && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setEditingModuleField({ id: exp.id, field: "expertise_required" }); setEditModuleValue(exp.expertise_required || ""); }}
+                              className="p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-200/50 rounded transition-colors"
+                            >
+                              <Pencil size={11} />
+                            </button>
+                          )}
+                        </div>
+                        {editingModuleField?.id === exp.id && editingModuleField?.field === "expertise_required" ? (
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <textarea
+                              autoFocus
+                              value={editModuleValue}
+                              onChange={(e) => setEditModuleValue(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === "Escape") { setEditingModuleField(null); setEditModuleValue(""); } }}
+                              rows={3}
+                              className="w-full text-xs text-gray-700 border border-blue-300 rounded px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-200 resize-y"
+                            />
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <button onClick={handleSaveModuleField} disabled={savingModule} className="px-2 py-1 bg-gray-900 text-white text-[11px] font-medium rounded hover:bg-gray-800 disabled:opacity-40 flex items-center gap-1">
+                                {savingModule ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />} Save
+                              </button>
+                              <button onClick={() => { setEditingModuleField(null); setEditModuleValue(""); }} className="px-2 py-1 text-[11px] text-gray-500 hover:bg-gray-100 rounded">Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-gray-600 leading-relaxed">
+                            {exp.expertise_required || "Not specified."}
+                          </p>
+                        )}
                       </div>
                     </div>
                     {exp.assigned_lab && (

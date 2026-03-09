@@ -1,21 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
-// PATCH — rename a module
+// PATCH — update a module (name, description, expertise_required)
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { module_name } = await req.json();
+  const body = await req.json();
 
-  if (!module_name?.trim()) {
-    return NextResponse.json({ error: "module_name required" }, { status: 400 });
+  const allowed = ["module_name", "description", "expertise_required"];
+  const updates: Record<string, string> = {};
+  for (const key of allowed) {
+    if (body[key] !== undefined && typeof body[key] === "string") {
+      updates[key] = body[key].trim();
+    }
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
   }
 
   const { data, error } = await supabase
     .from("modules")
-    .update({ module_name: module_name.trim() })
+    .update(updates)
     .eq("id", id)
     .select()
     .single();

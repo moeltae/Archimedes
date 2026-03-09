@@ -112,6 +112,7 @@ export default function Home() {
                 <StudyCard
                   key={study.id}
                   study={study}
+                  onDelete={(id) => setStudies((prev) => prev.filter((s) => s.id !== id))}
                 />
               ))}
             </div>

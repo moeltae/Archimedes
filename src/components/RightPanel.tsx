@@ -152,8 +152,6 @@ export default function RightPanel({
         <div className="px-4 pt-2 text-[11px] text-gray-400 leading-relaxed">
           <span>About</span> &middot; <span>GitHub</span> &middot;{" "}
           <span>API</span>
-          <br />
-          Archimedes &copy; 2026. AI-powered science.
         </div>
       </div>
     </div>
