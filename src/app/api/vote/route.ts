@@ -1,6 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const experimentId = searchParams.get("experiment_id");
+  const sessionId = searchParams.get("session_id");
+
+  if (!experimentId || !sessionId) {
+    return NextResponse.json({ vote_type: null });
+  }
+
+  const { data } = await supabase
+    .from("votes")
+    .select("vote_type")
+    .eq("experiment_id", experimentId)
+    .eq("session_id", sessionId)
+    .single();
+
+  return NextResponse.json({ vote_type: data?.vote_type || null });
+}
+
 export async function POST(req: NextRequest) {
   const { experiment_id, vote_type, session_id } = await req.json();
 

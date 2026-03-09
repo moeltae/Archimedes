@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   ArrowBigUp,
@@ -31,10 +31,8 @@ function timeAgo(dateStr: string) {
 
 export default function StudyCard({
   study,
-  onVote,
 }: {
   study: Study;
-  onVote?: () => void;
 }) {
   const [upvotes, setUpvotes] = useState(study.upvotes);
   const [downvotes, setDownvotes] = useState(study.downvotes);
@@ -44,30 +42,42 @@ export default function StudyCard({
   const [funded, setFunded] = useState(study.funded_amount);
   const [expired, setExpired] = useState(false);
 
+  // Load user's existing vote on mount
+  useEffect(() => {
+    const sessionId = getSessionId();
+    if (!sessionId) return;
+    fetch(`/api/vote?experiment_id=${study.id}&session_id=${sessionId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.vote_type) setUserVote(data.vote_type);
+      })
+      .catch(() => {});
+  }, [study.id]);
+
+  // Sync props when parent refetches
+  useEffect(() => {
+    setUpvotes(study.upvotes);
+    setDownvotes(study.downvotes);
+  }, [study.upvotes, study.downvotes]);
+
   const score = upvotes - downvotes;
 
   async function handleVote(type: "up" | "down") {
     if (voting) return;
     setVoting(true);
 
-    const sessionId = getSessionId();
-    const res = await fetch("/api/vote", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        experiment_id: study.id,
-        vote_type: type,
-        session_id: sessionId,
-      }),
-    });
+    // Optimistic update
+    const prevUp = upvotes;
+    const prevDown = downvotes;
+    const prevVote = userVote;
 
-    const data = await res.json();
-
-    if (data.action === "removed") {
+    if (userVote === type) {
+      // Toggle off
       if (type === "up") setUpvotes((v) => v - 1);
       else setDownvotes((v) => v - 1);
       setUserVote(null);
-    } else if (data.action === "switched") {
+    } else if (userVote) {
+      // Switch
       if (type === "up") {
         setUpvotes((v) => v + 1);
         setDownvotes((v) => v - 1);
@@ -77,13 +87,31 @@ export default function StudyCard({
       }
       setUserVote(type);
     } else {
+      // New vote
       if (type === "up") setUpvotes((v) => v + 1);
       else setDownvotes((v) => v + 1);
       setUserVote(type);
     }
 
+    try {
+      const sessionId = getSessionId();
+      await fetch("/api/vote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          experiment_id: study.id,
+          vote_type: type,
+          session_id: sessionId,
+        }),
+      });
+    } catch {
+      // Revert on failure
+      setUpvotes(prevUp);
+      setDownvotes(prevDown);
+      setUserVote(prevVote);
+    }
+
     setVoting(false);
-    onVote?.();
   }
 
   return (

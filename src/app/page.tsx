@@ -112,7 +112,6 @@ export default function Home() {
                 <StudyCard
                   key={study.id}
                   study={study}
-                  onVote={fetchStudies}
                 />
               ))}
             </div>
