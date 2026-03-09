@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import StudyCard from "@/components/StudyCard";
-import SortBar, { SortType } from "@/components/SortBar";
+import SortBar, { SortType, StatusFilter } from "@/components/SortBar";
 import NavSidebar from "@/components/NavSidebar";
 import RightPanel from "@/components/RightPanel";
 import { useSearch } from "@/components/SearchContext";
@@ -13,6 +13,7 @@ export default function Home() {
   const [studies, setStudies] = useState<Study[]>([]);
   const [allStudies, setAllStudies] = useState<Study[]>([]);
   const [sort, setSort] = useState<SortType>("hot");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [tagCounts, setTagCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -22,12 +23,13 @@ export default function Home() {
     setLoading(true);
     const params = new URLSearchParams({ sort });
     if (activeTag) params.set("tag", activeTag);
+    if (statusFilter !== "all") params.set("status", statusFilter);
 
     const res = await fetch(`/api/experiments?${params}`);
     const data = await res.json();
     setStudies(data.experiments || []);
     setLoading(false);
-  }, [sort, activeTag]);
+  }, [sort, activeTag, statusFilter]);
 
   // Fetch all studies once for tag counts + right panel
   useEffect(() => {
@@ -80,7 +82,12 @@ export default function Home() {
         <div>
           {/* Sort bar */}
           <div className="mb-3">
-            <SortBar active={sort} onChange={setSort} />
+            <SortBar
+              active={sort}
+              onChange={setSort}
+              statusFilter={statusFilter}
+              onStatusChange={setStatusFilter}
+            />
           </div>
 
           {/* Feed */}

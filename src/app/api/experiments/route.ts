@@ -6,6 +6,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const sort = searchParams.get("sort") || "hot";
   const tag = searchParams.get("tag");
+  const status = searchParams.get("status");
   const page = parseInt(searchParams.get("page") || "1");
   const limit = 20;
   const offset = (page - 1) * limit;
@@ -89,6 +90,10 @@ export async function GET(req: NextRequest) {
     query = query.contains("tags", [tag]);
   }
 
+  if (status && status !== "all") {
+    query = query.eq("status", status);
+  }
+
   switch (sort) {
     case "new":
       query = query.order("created_at", { ascending: false });
@@ -99,13 +104,8 @@ export async function GET(req: NextRequest) {
     case "funded":
       query = query.order("funded_amount", { ascending: false });
       break;
-    case "review":
-      query = query.in("status", ["pending_review", "rejected"]);
-      query = query.order("created_at", { ascending: false });
-      break;
     case "hot":
     default:
-      // Hot = upvotes - downvotes weighted by recency
       query = query.order("created_at", { ascending: false });
       break;
   }
