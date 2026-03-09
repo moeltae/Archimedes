@@ -29,6 +29,7 @@ import {
   Sparkles,
   Undo2,
   Paperclip,
+  Beaker,
 } from "lucide-react";
 import { BUDGET_CATEGORIES } from "@/types";
 
@@ -95,6 +96,7 @@ export default function ModuleWorkbench({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [demoRunning, setDemoRunning] = useState(false);
 
   // Per-sample upload state
   const [expandedSampleId, setExpandedSampleId] = useState<string | null>(null);
@@ -355,6 +357,70 @@ export default function ModuleWorkbench({
     setSubmitting(false);
   }
 
+  async function handleRunDemo() {
+    setDemoRunning(true);
+    try {
+      const res = await fetch("/api/analysis/demo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ module_id: moduleId }),
+      });
+      const data = await res.json();
+      if (data.job_id) {
+        // Add the new job so AnalysisResults picks it up
+        const newJob: AnalysisJob = {
+          id: data.job_id,
+          submission_id: data.submission_id,
+          module_id: moduleId,
+          status: "executing",
+          generated_code: null,
+          code_language: "python",
+          prompt_context: {},
+          modal_call_id: null,
+          execution_stdout: null,
+          execution_stderr: null,
+          execution_duration_ms: null,
+          figure_urls: [],
+          output_file_urls: [],
+          statistical_results: {},
+          interpretation: null,
+          error_message: null,
+          retry_count: 0,
+          max_retries: 3,
+          created_at: new Date().toISOString(),
+          completed_at: null,
+          follow_up_prompt: null,
+        };
+        setAnalysisJobs((prev) => [newJob, ...prev]);
+        // Add a mock submission so the AnalysisResults component renders
+        if (data.submission_id) {
+          setSubmissions((prev) => {
+            if (prev.some((s) => s.id === data.submission_id)) return prev;
+            return [
+              {
+                id: data.submission_id,
+                module_id: moduleId,
+                session_id: "demo",
+                submitted_by_lab: "Demo Lab",
+                submission_type: "results" as const,
+                results_summary: "Demo: Longitudinal neural probe impedance + histology data",
+                results_data: {},
+                file_urls: [],
+                notes: "Mock demo data",
+                submitted_at: new Date().toISOString(),
+              },
+              ...prev,
+            ];
+          });
+        }
+        setSubmitted(true);
+      }
+    } catch (err) {
+      console.error("Demo failed:", err);
+    }
+    setDemoRunning(false);
+  }
+
   const samplesCompleted = samples.filter((s) => s.status === "completed").length;
   const samplesProgress =
     samples.length > 0 ? Math.round((samplesCompleted / samples.length) * 100) : 0;
@@ -465,6 +531,19 @@ export default function ModuleWorkbench({
                   Reopen Module
                 </button>
               )}
+              <button
+                onClick={handleRunDemo}
+                disabled={demoRunning}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40 transition-colors"
+                title="Run demo analysis with mock neural probe data"
+              >
+                {demoRunning ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Beaker size={12} />
+                )}
+                Demo
+              </button>
             </div>
           </div>
 

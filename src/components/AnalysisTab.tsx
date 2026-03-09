@@ -193,7 +193,28 @@ export default function AnalysisTab() {
     setCancellingJob(null);
   }
 
-  const filtered = jobs.filter((j) => {
+  // Group jobs by module_id and pick the latest job per module
+  const latestByModule = (() => {
+    const grouped = new Map<string, AnalysisJobWithContext[]>();
+    for (const job of jobs) {
+      const key = job.module_id;
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key)!.push(job);
+    }
+    // Sort each group by created_at descending and return the latest + run count
+    const result: (AnalysisJobWithContext & { _runCount: number; _completedCount: number })[] = [];
+    for (const [, group] of grouped) {
+      group.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      const latest = group[0];
+      const completedCount = group.filter((j) => j.status === "completed").length;
+      result.push({ ...latest, _runCount: group.length, _completedCount: completedCount });
+    }
+    // Sort modules by latest job's created_at descending
+    result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return result;
+  })();
+
+  const filtered = latestByModule.filter((j) => {
     if (filter === "running" && ["completed", "failed", "cancelled"].includes(j.status)) return false;
     if (filter === "completed" && j.status !== "completed") return false;
     if (filter === "failed" && j.status !== "failed") return false;
@@ -211,11 +232,12 @@ export default function AnalysisTab() {
     return true;
   });
 
+  // Stats based on unique modules (latest job per module)
   const stats = {
-    total: jobs.length,
-    running: jobs.filter((j) => !["completed", "failed", "cancelled"].includes(j.status)).length,
-    completed: jobs.filter((j) => j.status === "completed").length,
-    failed: jobs.filter((j) => j.status === "failed").length,
+    total: latestByModule.length,
+    running: latestByModule.filter((j) => !["completed", "failed", "cancelled"].includes(j.status)).length,
+    completed: latestByModule.filter((j) => j.status === "completed").length,
+    failed: latestByModule.filter((j) => j.status === "failed").length,
   };
 
   if (loading) {
@@ -278,6 +300,7 @@ export default function AnalysisTab() {
           const moduleName = job.module?.module_name || "Unknown module";
           const isAiModule = job.module?.is_analysis;
           const tags = job.module?.experiment?.tags || [];
+          const completedRuns = job._completedCount;
 
           return (
             <div
@@ -355,6 +378,12 @@ export default function AnalysisTab() {
                       <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
                         <BarChart3 size={10} />
                         {job.figure_urls.length}
+                      </span>
+                    )}
+                    {completedRuns > 0 && (
+                      <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                        <BarChart3 size={10} />
+                        {completedRuns}
                       </span>
                     )}
                     {isExpanded ? (

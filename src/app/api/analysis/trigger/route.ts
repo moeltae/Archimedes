@@ -28,6 +28,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Skip if there's already a running job for this module (unless it's a follow-up prompt)
+  if (!follow_up_prompt) {
+    const { data: existingJobs } = await supabase
+      .from("analysis_jobs")
+      .select("id")
+      .eq("module_id", module_id)
+      .in("status", ["pending", "generating_code", "executing", "retrying"]);
+
+    if (existingJobs && existingJobs.length > 0) {
+      return NextResponse.json({
+        job_id: existingJobs[0].id,
+        status: "already_running",
+      });
+    }
+  }
+
   // Create analysis job row
   const { data: job, error } = await supabase
     .from("analysis_jobs")
