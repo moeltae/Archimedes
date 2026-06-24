@@ -1,0 +1,4 @@
+{
+  "declaredOutputs": [],
+  "note": "Computed artifacts are stored in S3 / job_artifacts and are not committed to git."
+}
